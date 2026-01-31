@@ -1,0 +1,64 @@
+{
+  "@context": {
+    "prov": "http://www.w3.org/ns/prov#",
+    "jh": "https://jhcontext.com/vocab#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "@type": "jh:Envelope",
+  "context_id": "ctx-9012",
+  "schema_version": "jh:0.2",
+  "producer": "did:web:company.example:agent-1",
+  "created_at": "2026-02-02T10:15:00Z",
+  "ttl": "PT30M",
+  "status": "active",
+  "semantic_payload": {
+    "@model": "UserML",
+    "layers": {
+      "observation": [
+        { "subject": "user:alice", "predicate": "calendarStatus", "object": "InMeeting" },
+        { "subject": "user:alice", "predicate": "microphoneActivity", "object": "speechDetected" }
+      ],
+      "interpretation": [
+        { "subject": "user:alice", "predicate": "availability", "object": "low" }
+      ],
+      "situation": [
+        { "subject": "user:alice", "predicate": "isInSituation", "object": "meeting", "confidence": 0.9 }
+      ],
+      "application": [
+        { "subject": "notification", "predicate": "shouldBeDelivered", "object": false }
+      ]
+    }
+  },
+  "provenance_ref": {
+    "prov_graph_id": "prov:prov-ctx-9012",
+    "prov_digest": "sha256:abcd1234..."
+  },
+  "proof": {
+    "canonicalization": "URDNA2015",
+    "hash": "sha256:0f3c...9a",
+    "signature": "zBase58SignatureExample==",
+    "signer": "did:web:company.example:agent-1"
+  },
+  "prov_example_graph": {
+    "entity": {
+      "ctx:ctx-9012": { "prov:label": "jhcontext envelope for meeting decision" },
+      "ent:calendar-evt-123": { "prov:label": "calendar event 123" },
+      "ent:audio-obs-77": { "prov:label": "audio observation 77" }
+    },
+    "activity": {
+      "act:inference-42": {
+        "prov:label": "situation inference activity",
+        "prov:used": [ "ent:calendar-evt-123", "ent:audio-obs-77" ]
+      }
+    },
+    "agent": {
+      "did:web:company.example:agent-1": { "prov:label": "SituationAgent (DID)" }
+    },
+    "wasGeneratedBy": [
+      { "prov:entity": "ctx:ctx-9012", "prov:activity": "act:inference-42" }
+    ],
+    "wasAssociatedWith": [
+      { "prov:activity": "act:inference-42", "prov:agent": "did:web:company.example:agent-1" }
+    ]
+  }
+}
