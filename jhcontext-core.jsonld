@@ -7,13 +7,13 @@
   },
   "@type": "jh:Envelope",
   "context_id": "ctx-<uuid>",
-  "schema_version": "jh:0.2",
+  "schema_version": "jh:0.3",
   "producer": "did:example:agent-1",
   "created_at": "2026-02-02T10:15:00Z",
   "ttl": "PT30M",
   "status": "active",
-  "performative": "offer",
-  "replaces": null,
+  "scope": "notification_management",
+
   "semantic_payload": [{
     "@model": "UserML",
     "layers": {
@@ -23,14 +23,58 @@
       "application": []
     }
   }],
+
+  "artifacts_registry": [
+    {
+      "artifact_id": "art-<id>",
+      "type": "semantic_extraction",
+      "storage_ref": "artifacts/semantic/art-<id>.json",
+      "content_hash": "sha256:<hex>",
+      "model": "context-encoder-v2.1",
+      "timestamp": "2026-02-02T10:15:00Z",
+      "deterministic": true,
+      "confidence": 0.92
+    }
+  ],
+
+  "passed_artifact_pointer": "art-<id>",
+
+  "decision_influence": [
+    {
+      "agent": "did:example:decision-agent",
+      "categories": ["user_availability"],
+      "abstraction_level": "situation",
+      "temporal_scope": "current",
+      "influence_weights": {"user_availability": 0.95},
+      "confidence": 0.92
+    }
+  ],
+
+  "privacy": {
+    "data_category": "behavioral",
+    "legal_basis": "consent:user-12345-20250101",
+    "retention": "P7D",
+    "storage_policy": "centralized-encrypted",
+    "feature_suppression": []
+  },
+
+  "compliance": {
+    "risk_level": "medium",
+    "human_oversight_required": false,
+    "model_card_ref": null,
+    "test_suite_ref": null,
+    "escalation_path": null
+  },
+
   "provenance_ref": {
     "prov_graph_id": "prov:prov-ctx-<uuid>",
     "prov_digest": "sha256:<hex>"
   },
+
   "proof": {
     "canonicalization": "URDNA2015",
-    "hash": "sha256:<hex>",
-    "signature": "<linked-data-proof>",
+    "content_hash": "sha256:<hex>",
+    "signature": "<ed25519-signature>",
     "signer": "did:example:agent-1"
   }
 }

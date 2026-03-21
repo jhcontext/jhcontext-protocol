@@ -6,12 +6,14 @@
   },
   "@type": "jh:Envelope",
   "context_id": "ctx-9012",
-  "schema_version": "jh:0.2",
+  "schema_version": "jh:0.3",
   "producer": "did:web:company.example:agent-1",
   "created_at": "2026-02-02T10:15:00Z",
   "ttl": "PT30M",
   "status": "active",
-  "semantic_payload": {
+  "scope": "notification_management",
+
+  "semantic_payload": [{
     "@model": "UserML",
     "layers": {
       "observation": [
@@ -19,7 +21,7 @@
         { "subject": "user:alice", "predicate": "microphoneActivity", "object": "speechDetected" }
       ],
       "interpretation": [
-        { "subject": "user:alice", "predicate": "availability", "object": "low" }
+        { "subject": "user:alice", "predicate": "availability", "object": "low", "confidence": 0.88 }
       ],
       "situation": [
         { "subject": "user:alice", "predicate": "isInSituation", "object": "meeting", "confidence": 0.9 }
@@ -28,31 +30,105 @@
         { "subject": "notification", "predicate": "shouldBeDelivered", "object": false }
       ]
     }
+  }],
+
+  "artifacts_registry": [
+    {
+      "artifact_id": "art-calendar-001",
+      "type": "token_sequence",
+      "content_hash": "sha256:a3f1c9e8b2d4...truncated",
+      "timestamp": "2026-02-02T10:14:30Z",
+      "deterministic": true,
+      "confidence": null
+    },
+    {
+      "artifact_id": "art-audio-001",
+      "type": "token_sequence",
+      "content_hash": "sha256:7b2e4f1a8c3d...truncated",
+      "timestamp": "2026-02-02T10:14:35Z",
+      "deterministic": true,
+      "confidence": null
+    },
+    {
+      "artifact_id": "art-decision-001",
+      "type": "semantic_extraction",
+      "content_hash": "sha256:e5d9a2c1f7b3...truncated",
+      "model": "situation-engine-v1",
+      "timestamp": "2026-02-02T10:15:00Z",
+      "deterministic": false,
+      "confidence": 0.9
+    }
+  ],
+
+  "passed_artifact_pointer": "art-decision-001",
+
+  "decision_influence": [
+    {
+      "agent": "did:web:company.example:agent-1",
+      "categories": ["calendar_status", "audio_activity"],
+      "abstraction_level": "situation",
+      "temporal_scope": "current",
+      "influence_weights": { "calendar_status": 0.85, "audio_activity": 0.70 },
+      "confidence": 0.9
+    }
+  ],
+
+  "privacy": {
+    "data_category": "behavioral",
+    "legal_basis": "consent:alice-20260101",
+    "retention": "P7D",
+    "storage_policy": "centralized-encrypted",
+    "feature_suppression": []
   },
+
+  "compliance": {
+    "risk_level": "low",
+    "human_oversight_required": false,
+    "model_card_ref": null,
+    "test_suite_ref": null,
+    "escalation_path": null
+  },
+
   "provenance_ref": {
     "prov_graph_id": "prov:prov-ctx-9012",
-    "prov_digest": "sha256:abcd1234..."
+    "prov_digest": "sha256:f4a8c3e1d9b2...truncated"
   },
+
   "proof": {
     "canonicalization": "URDNA2015",
-    "hash": "sha256:0f3c...9a",
+    "content_hash": "sha256:0f3c...9a",
     "signature": "zBase58SignatureExample==",
     "signer": "did:web:company.example:agent-1"
   },
+
   "prov_example_graph": {
     "entity": {
       "ctx:ctx-9012": { "prov:label": "jhcontext envelope for meeting decision" },
-      "ent:calendar-evt-123": { "prov:label": "calendar event 123" },
-      "ent:audio-obs-77": { "prov:label": "audio observation 77" }
+      "ent:calendar-evt-123": {
+        "prov:label": "calendar event 123",
+        "jh:artifactType": "token_sequence",
+        "jh:contentHash": "sha256:a3f1c9e8b2d4...truncated"
+      },
+      "ent:audio-obs-77": {
+        "prov:label": "audio observation 77",
+        "jh:artifactType": "token_sequence",
+        "jh:contentHash": "sha256:7b2e4f1a8c3d...truncated"
+      }
     },
     "activity": {
       "act:inference-42": {
         "prov:label": "situation inference activity",
+        "prov:startedAtTime": "2026-02-02T10:14:50Z",
+        "prov:endedAtTime": "2026-02-02T10:15:00Z",
+        "jh:method": "situation-engine-v1",
         "prov:used": [ "ent:calendar-evt-123", "ent:audio-obs-77" ]
       }
     },
     "agent": {
-      "did:web:company.example:agent-1": { "prov:label": "SituationAgent (DID)" }
+      "did:web:company.example:agent-1": {
+        "prov:label": "SituationAgent (DID)",
+        "jh:role": "decision_maker"
+      }
     },
     "wasGeneratedBy": [
       { "prov:entity": "ctx:ctx-9012", "prov:activity": "act:inference-42" }
