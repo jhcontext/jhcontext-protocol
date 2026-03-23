@@ -61,6 +61,7 @@
   "compliance": {
     "risk_level": "medium",
     "human_oversight_required": false,
+    "forwarding_policy": "raw_forward",
     "model_card_ref": null,
     "test_suite_ref": null,
     "escalation_path": null

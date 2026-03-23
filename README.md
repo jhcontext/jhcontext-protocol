@@ -98,9 +98,18 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 |-------|------|----------|---------|-------------|
 | `risk_level` | RiskLevel | yes | `"medium"` | Regulatory risk classification |
 | `human_oversight_required` | boolean | yes | `false` | Whether human review is mandatory |
+| `forwarding_policy` | ForwardingPolicy | yes | `"raw_forward"` | How this envelope's content is forwarded to downstream consumers (see below) |
 | `model_card_ref` | string \| null | no | `null` | URI to model card |
 | `test_suite_ref` | string \| null | no | `null` | URI to fairness/safety tests |
 | `escalation_path` | string \| null | no | `null` | Contact for escalation |
+
+**Forwarding Policy:** Controls what data downstream tasks receive from this envelope:
+- `semantic_forward` — downstream consumers receive **only** `semantic_payload`. Raw tokens, embeddings, artifact metadata, and other envelope fields are stripped before forwarding. Required for HIGH-risk scenarios (healthcare, credit, justice) to guarantee audit alignment: what the consuming agent sees is exactly what the provenance graph records.
+- `raw_forward` — downstream consumers receive the full envelope (all fields). Permitted for LOW/MEDIUM-risk scenarios where performance outweighs strict audit alignment.
+
+The `EnvelopeBuilder.set_risk_level(HIGH)` auto-sets `semantic_forward`; `set_risk_level(LOW)` auto-sets `raw_forward`. Per-task overrides are permitted (e.g., a data fetch task in a HIGH-risk flow may use `raw_forward` to pass raw observations to a downstream classification task). A **monotonic constraint** prevents downgrading from `semantic_forward` to `raw_forward` once the semantic boundary has been crossed within a pipeline.
+
+The jhcontext SDK provides `ForwardingEnforcer` — a framework-agnostic class that implements the monotonic constraint, policy resolution, and output filtering. Agent runtimes (CrewAI, LangGraph, etc.) call `enforcer.resolve(envelope)` to get the effective policy and `enforcer.filter_output(envelope)` to produce the filtered output for the next consumer. No agent framework imports are required — the enforcement logic is part of the core SDK.
 
 ### ProvenanceRef
 
@@ -126,6 +135,7 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 |------|--------|---------|
 | **ArtifactType** | `token_sequence`, `embedding`, `semantic_extraction`, `tool_result` | Artifact.type |
 | **RiskLevel** | `low`, `medium`, `high` | ComplianceBlock.risk_level |
+| **ForwardingPolicy** | `semantic_forward`, `raw_forward` | ComplianceBlock.forwarding_policy |
 | **AbstractionLevel** | `observation`, `interpretation`, `situation` | DecisionInfluence.abstraction_level |
 | **TemporalScope** | `current`, `historical` | DecisionInfluence.temporal_scope |
 | **EnvelopeStatus** | `active`, `expired`, `deleted` | Envelope.status |
@@ -232,7 +242,7 @@ Multiple results combine into an **AuditReport** with `context_id`, `timestamp`,
 
 | Version | Changes |
 |---------|---------|
-| **v0.3** | Added: `scope`, `artifacts_registry`, `passed_artifact_pointer`, `decision_influence`, `privacy` block, `compliance` block. Added 6 enums. Defined 4 audit verification operations. |
+| **v0.3** | Added: `scope`, `artifacts_registry`, `passed_artifact_pointer`, `decision_influence`, `privacy` block, `compliance` block with `forwarding_policy` (Semantic-Forward / Raw-Forward). Added 7 enums (including `ForwardingPolicy`). Defined 4 audit verification operations. |
 | **v0.2** | Initial JSON-LD schema with UserML payload, PROV integration, and cryptographic proof. Included `performative` and `replaces` fields. |
 | **v0.1** | Draft specification document. |
 
