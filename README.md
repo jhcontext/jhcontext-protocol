@@ -1,4 +1,4 @@
-# jhcontext Protocol Specification (v0.3)
+# jhcontext Protocol Specification (v0.5)
 
 ## Abstract
 
@@ -7,8 +7,9 @@ The **jhcontext protocol** (PAC-AI — Protocol for Auditable Context in AI) is 
 ## Status
 
 - **Version:** v0.5
-- **Stability:** Research specification (targeting AIS 2026)
-- **Reference implementation:** [jhcontext-sdk](https://github.com/jhdarosa/jhcontext-sdk) (Python, v0.2.x)
+- **Stability:** Research specification
+- **Reference implementation:** [jhcontext-sdk](https://github.com/jhdarosa/jhcontext-sdk) (Python, v0.5.x)
+- **Reference scenarios:** [jhcontext-usecases](https://github.com/jhdarosa/jhcontext-usecases) — runnable education + healthcare pipelines, worked SPARQL audit queries
 
 ## Non-Goals
 
@@ -136,7 +137,7 @@ The jhcontext SDK provides `ForwardingEnforcer` — a framework-agnostic class t
 | **ArtifactType** | `token_sequence`, `embedding`, `semantic_extraction`, `tool_result` | Artifact.type |
 | **RiskLevel** | `low`, `medium`, `high` | ComplianceBlock.risk_level |
 | **ForwardingPolicy** | `semantic_forward`, `raw_forward` | ComplianceBlock.forwarding_policy |
-| **AbstractionLevel** | `observation`, `interpretation`, `situation` | DecisionInfluence.abstraction_level |
+| **AbstractionLevel** | `observation`, `interpretation`, `situation`, `application` | DecisionInfluence.abstraction_level — matches the lower-case form of `administration.group` |
 | **TemporalScope** | `current`, `historical` | DecisionInfluence.temporal_scope |
 | **EnvelopeStatus** | `active`, `expired`, `deleted` | Envelope.status |
 | **DataCategory** | `behavioral`, `biometric`, `sensitive` | PrivacyBlock.data_category |
@@ -260,7 +261,7 @@ The envelope references the PROV graph via `provenance_ref.prov_graph_id` and bi
 
 ## Audit & Compliance Verification
 
-The protocol defines four verification operations that produce structured `AuditResult` records (check_name, passed, evidence, message):
+The protocol defines six verification operations that produce structured `AuditResult` records (check_name, passed, evidence, message):
 
 ### verify_temporal_oversight — EU AI Act Art. 14
 
@@ -290,7 +291,34 @@ Validates envelope cryptographic integrity: recomputes SHA-256 of URDNA2015-cano
 **Inputs:** signed envelope.
 **Evidence:** recomputed hash, signer DID, signature validity.
 
+### verify_rubric_grounding — Education scenarios
+
+Structural check that every `Interpretation`-group SituationalStatement whose `mainpart.auxiliary=addresses` and `mainpart.predicate=rubric_criterion` also carries an `explanation.evidence` span (offset + length + content hash). Flags orphan feedback sentences that claim to address a rubric criterion without citing evidence.
+
+**Inputs:** envelope.
+**Evidence:** list of orphan sentence IDs (empty if verified).
+
+### verify_multimodal_binding
+
+For scenarios where `mainpart.object` is a media artifact (audio, image, video), dispatches per artifact type to validate that the cited region (start_ms/end_ms window, bounding box, frame range) is present in the referenced artifact.
+
+**Inputs:** envelope, artifact store.
+**Evidence:** per-statement binding validity + any mismatches.
+
 Multiple results combine into an **AuditReport** with `context_id`, `timestamp`, and `overall_passed`.
+
+---
+
+## SPARQL Indexability
+
+Because each SituationalStatement is UserML markup over RDF, an envelope loaded into any RDF triple-store is directly SPARQL-queryable against the jhcontext vocabulary (`https://jhcontext.com/vocab#`). Each Python audit verifier in the reference implementation is a thin wrapper over a corresponding SPARQL query. Worked examples ship in the companion [jhcontext-usecases](https://github.com/jhdarosa/jhcontext-usecases) repo:
+
+- **Rubric-criterion audit** (education feedback scenario) — filter `Interpretation`-group statements by criterion URI, return cited evidence spans sorted by confidence ascending. Answers an Art. 86 "right to explanation" request in one SPARQL roundtrip.
+- **Orphan-sentence verifier** (education) — `FILTER NOT EXISTS { ?stmt jh:explanation/jh:evidence ?ev }` over the same envelope; zero rows = structural rubric-grounding verified.
+- **Oversight-routing query** (healthcare triage scenario) — filter by SNOMED finding code + `explanation.confidence < 0.80`, yielding the Art. 14 review queue at population scale.
+- **Negative-proof query** (healthcare, education) — filter `mainpart.predicate IN ("insurance_tier", "demographic", …)`; zero rows = Art. 13 absence-of-suppressed-attribute verified.
+
+Consumers load an envelope with `rdflib`'s JSON-LD parser (with `@vocab` injected into the envelope's `@context`) and execute standard SPARQL. No bespoke application code is required on the audit side.
 
 ---
 
@@ -310,8 +338,8 @@ Multiple results combine into an **AuditReport** with `context_id`, `timestamp`,
 
 ## Files
 
-- `jhcontext-core.jsonld` — Normative core envelope schema (JSON-LD, v0.3).
-- `prov-example.jsonld` — Example envelope + PROV graph for the smart-office scenario.
+- `jhcontext-core.jsonld` — Normative core envelope schema (JSON-LD, v0.5).
+- `prov-example.jsonld` — Example envelope + PROV graph for the smart-office scenario (v0.5).
 - `README.md` — This specification.
 
 ## License
