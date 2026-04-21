@@ -6,7 +6,7 @@ The **jhcontext protocol** (PAC-AI — Protocol for Auditable Context in AI) is 
 
 ## Status
 
-- **Version:** v0.4
+- **Version:** v0.5
 - **Stability:** Research specification (targeting AIS 2026)
 - **Reference implementation:** [jhcontext-sdk](https://github.com/jhdarosa/jhcontext-sdk) (Python, v0.2.x)
 
@@ -37,13 +37,13 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `context_id` | string | yes | `ctx-<uuid>` | Unique envelope identifier |
-| `schema_version` | string | yes | `"jh:0.4"` | Protocol version |
+| `schema_version` | string | yes | `"jh:0.5"` | Protocol version |
 | `producer` | string (DID) | yes | — | DID of the producing agent |
 | `created_at` | ISO 8601 datetime | yes | now | Creation timestamp |
 | `ttl` | ISO 8601 duration | yes | `"PT30M"` | Time-to-live |
 | `status` | EnvelopeStatus | yes | `"active"` | Lifecycle status |
 | `scope` | string | yes | — | Regulatory/business context (e.g. `healthcare_treatment_recommendation`) |
-| `semantic_payload` | array of objects | yes | `[]` | Flat list of atomic UserML semantic statements (see below) |
+| `semantic_payload` | array of objects | yes | `[]` | SituationReport: flat list of atomic UserML SituationalStatements (see below) |
 | `artifacts_registry` | array of Artifact | yes | `[]` | Tracked computational artifacts |
 | `passed_artifact_pointer` | string \| null | no | `null` | Points to the artifact selected for decision |
 | `decision_influence` | array of DecisionInfluence | yes | `[]` | How context influenced decisions |
@@ -77,7 +77,7 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 |-------|------|----------|---------|-------------|
 | `agent` | string (DID) | yes | — | Agent that made the decision |
 | `categories` | array of string | yes | — | Data dimensions used (e.g. `patient_status`, `tumor_response`) |
-| `abstraction_level` | AbstractionLevel | yes | `"situation"` | UserML layer-tag of the influencing statement |
+| `abstraction_level` | AbstractionLevel | yes | `"situation"` | Classification of the influencing statement (matches its `administration.group`) |
 | `temporal_scope` | TemporalScope | yes | `"current"` | Whether current or historical data was used |
 | `influence_weights` | object (string → float) | yes | `{}` | Per-category weight [0–1] |
 | `confidence` | float | yes | `0.0` | Overall decision confidence |
@@ -143,57 +143,92 @@ The jhcontext SDK provides `ForwardingEnforcer` — a framework-agnostic class t
 
 ---
 
-## Semantic Payload (UserML)
+## Semantic Payload (UserML SituationReport)
 
-The `semantic_payload` carries a flat list of **semantic statements**. Each statement is an atomic UserML SituationalStatement [Heckmann 2005] — a markup-language unit expressed in RDF whose tuples refer to external ontologies (SNOMED, FHIR, QTI, custom RDF). The RDF derivation enables SPARQL indexing and downstream reasoning without constraining the ontologies used.
+The `semantic_payload` is a **SituationReport** — a bag of atomic **SituationalStatements** in the sense of Heckmann [2005]. Each statement is a UserML markup unit (RDF-based) whose slots refer to external ontologies (SNOMED, FHIR, QTI, custom RDF), enabling SPARQL indexing and downstream reasoning without constraining the ontologies used.
 
-Each statement carries:
+Each SituationalStatement is organised in five attribute-group **boxes**. Mainpart is required; the others are optional:
 
-- **`@model`** discriminator (currently `"UserML"`)
-- **`layer`** type-tag — one of `observation` | `interpretation` | `situation` | `application`
-- **`mainpart`** — the core claim. Heckmann's trio is `auxiliary / predicate / range`; PAC-AI adds an explicit `subject` slot to handle multi-subject context (submissions, findings, agents — not just users). Mainpart is therefore `{subject, auxiliary, predicate, range}`.
-- **`situation`** *(optional box)* — temporal/spatial context of the claim itself: `start`, `end`, `durability`, `location`.
-- **`explanation`** *(optional box)* — epistemic metadata: `confidence`, `creator` (DID), `source`, `method`, `evidence`.
+### Mainpart (required) — five-tuple
 
-Heckmann's `privacy` and `administration` boxes are mapped to envelope-level fields (governance block and proof block, respectively); they are not repeated per statement.
+Heckmann's RDF-based mainpart has five slots, not three. `range` is the **value space** (defaults or enum type); `object` is the **actual value** the subject takes in that space.
+
+| Slot | Meaning |
+|---|---|
+| **subject** | The main entity the statement is about (user, submission, patient, agent, …). PAC-AI extension: Heckmann's UserML assumes the subject is the user; PAC-AI carries context about many subjects, so `subject` is explicit. |
+| **auxiliary** | The auxiliary of the predicate — the modal operator. Heckmann's basic set: `hasProperty`, `hasInterest`, `hasBelieve`, `hasKnowledge`, `hasPreference`, `hasRegularity`, `hasPlan`, `hasGoal`, `hasDone`, `hasLocation`. PAC-AI adds domain auxiliaries as needed (`addresses`, `hasFinding`, `hasPolicy`, `hasText`, `isInSituation`, …). |
+| **predicate** | The dimension or category (e.g., `timePressure`, `rubric_criterion`, `thermalComfort`). |
+| **range** | The value space / possible values. Can be an ordinal enum (`low-medium-high`), a type reference (`RubricCriterionURI`, `integer`, `string`), or `any` when unrestricted. |
+| **object** | The actual value the subject takes in that range (`high`, `rubric_v2.3#C3-evidence_integration`, `22.3`). |
+
+### Situation box (optional) — temporal/spatial constraints on the claim
+
+`start`, `end`, `durability`, `location`, `position`.
+
+### Explanation box (optional) — epistemic metadata
+
+`source`, `creator`, `method`, `evidence`, `confidence`.
+
+### Privacy box (optional)
+
+`key`, `owner`, `access`, `purpose`, `retention`. **PAC-AI factoring:** privacy metadata typically lives at envelope level (governance block), covering all statements in the report; per-statement privacy is rare and only used when overriding envelope-level defaults.
+
+### Administration box — classification + identity
+
+`id`, `unique`, `replaces`, **`group`**, `notes`. **`group`** is the most important slot in PAC-AI use: it's an open classifier for the kind of claim the statement makes. Heckmann's example values are `UserModel`, `ContextModel`, `SensorData`. PAC-AI uses `Observation`, `Interpretation`, `Situation`, `Application` for abstraction-level classification of decision context; other classifications are permitted and additive.
+
+**PAC-AI factoring:** `id`, `unique`, `replaces` overlap with envelope-level `context_id` and the `proof` block's signature/hash and are not repeated per statement. `group` is the load-bearing administration slot in PAC-AI — it replaces the top-level `layer` field used in v0.4.
+
+### Example
 
 ```json
 "semantic_payload": [
   { "@model": "UserML",
-    "layer":  "observation",
     "mainpart": {"subject": "user:alice", "auxiliary": "hasProperty",
-                 "predicate": "temperature", "range": 22.3},
-    "explanation": {"source": "sensor:thermostat-01", "confidence": 1.0} },
+                 "predicate": "temperature",
+                 "range": "float-degrees-celsius", "object": 22.3},
+    "explanation":    {"source": "sensor:thermostat-01", "confidence": 1.0},
+    "administration": {"group": "Observation"} },
 
   { "@model": "UserML",
-    "layer":  "interpretation",
     "mainpart": {"subject": "user:alice", "auxiliary": "hasAssessment",
-                 "predicate": "thermalComfort", "range": "comfortable"},
-    "explanation": {"confidence": 0.92, "creator": "did:example:comfort-agent",
-                    "method": "thermal_model_v1"} },
+                 "predicate": "thermalComfort",
+                 "range": "uncomfortable-neutral-comfortable", "object": "comfortable"},
+    "explanation":    {"confidence": 0.92,
+                       "creator": "did:example:comfort-agent",
+                       "method":  "thermal_model_v1"},
+    "administration": {"group": "Interpretation"} },
 
   { "@model": "UserML",
-    "layer":  "situation",
     "mainpart": {"subject": "user:alice", "auxiliary": "isInSituation",
-                 "predicate": "activity", "range": "meeting"},
-    "situation":   {"start": "2026-02-01T10:00:00Z"},
-    "explanation": {"confidence": 0.95} },
+                 "predicate": "activity",
+                 "range": "meeting|commute|idle|focus", "object": "meeting"},
+    "situation":      {"start": "2026-02-01T10:00:00Z", "durability": "few minutes"},
+    "explanation":    {"confidence": 0.95},
+    "administration": {"group": "Situation"} },
 
   { "@model": "UserML",
-    "layer":  "application",
     "mainpart": {"subject": "notification:n-42", "auxiliary": "hasPolicy",
-                 "predicate": "shouldBeDelivered", "range": false} }
+                 "predicate": "shouldBeDelivered",
+                 "range": "boolean", "object": false},
+    "administration": {"group": "Application"} }
 ]
 ```
 
-| Layer | Purpose |
-|-------|---------|
-| **observation** | Raw sensor/data facts |
-| **interpretation** | Inferred insights (expect `explanation.confidence`) |
-| **situation** | Higher-level contextual states; often paired with a `situation` box for temporal/spatial scope |
-| **application** | Domain-specific actions or decisions |
+### `administration.group` values used in PAC-AI
 
-**Note on the shape.** In Heckmann's original UserML the layer is a type-tag on each statement, not a container. v0.4 follows that shape: statements are atomic and independently queryable. The outer `layers: {...}` wrapper used in earlier drafts has been removed.
+| Group | Purpose |
+|---|---|
+| **Observation** | Direct sensor/data fact; no derivation |
+| **Interpretation** | Model-derived inference (expect `explanation.confidence`) |
+| **Situation** | Aggregated higher-level state (expect `situation` + `explanation.confidence`) |
+| **Application** | Service-level output or policy (the mainpart *is* the output) |
+
+Other values are permitted (`UserModel`, `ContextModel`, `SensorData` per Heckmann; domain-specific classifications as needed). Audit queries typically filter on `administration.group`.
+
+### Fidelity note
+
+v0.5 restores the full Heckmann five-tuple mainpart (`subject, auxiliary, predicate, range, object`), replaces the top-level `layer` field (introduced in v0.4, and not a Heckmann construct) with the native `administration.group` slot, and documents the five-box onion model explicitly. "Range" in UserML is the value-space descriptor; "object" is the value chosen from that space.
 
 ---
 
@@ -263,7 +298,8 @@ Multiple results combine into an **AuditReport** with `context_id`, `timestamp`,
 
 | Version | Changes |
 |---------|---------|
-| **v0.4** | Realigned `semantic_payload` to Heckmann's SituationalStatement shape. Flat list of atomic statements, each carrying a `layer` type-tag, a `mainpart {subject, auxiliary, predicate, range}` (explicit `subject` is a PAC-AI extension over UserML's implicit-user-subject), and optional `situation` (temporal/spatial) and `explanation` (epistemic metadata: confidence, creator, source, method, evidence) boxes. Removed the outer `layers: {...}` wrapper; the layer is now a per-statement type-tag. Heckmann's `privacy` and `administration` boxes continue to be factored to the envelope's governance and proof blocks. |
+| **v0.5** | Corrected the SituationalStatement shape against the authoritative Heckmann (2005) description (ORACON §4.1). Mainpart is now the full five-tuple `{subject, auxiliary, predicate, range, object}` — `range` is the value space, `object` is the actual value (v0.4 conflated them). The v0.4 top-level `layer` field is removed; statement classification now lives in the native `administration.group` slot (open string; PAC-AI uses `Observation`/`Interpretation`/`Situation`/`Application`, alongside Heckmann's `UserModel`/`ContextModel`/`SensorData`). The `situation` box now includes the full slot set (start, end, durability, location, position). The five-box onion model (mainpart, situation, explanation, privacy, administration) is explicitly documented; privacy defaults to envelope-level, administration.id/unique/replaces overlap with envelope context_id and proof and are omitted per-statement. |
+| **v0.4** | Flat list of atomic statements (removed v0.3's `layers: {...}` container wrapper). Each statement had a per-statement `layer` type-tag (observation/interpretation/situation/application) — superseded in v0.5 by `administration.group`. Introduced explicit `subject` slot as PAC-AI extension over UserML's implicit-user-subject. |
 | **v0.3** | Added: `scope`, `artifacts_registry`, `passed_artifact_pointer`, `decision_influence`, `privacy` block, `compliance` block with `forwarding_policy` (Semantic-Forward / Raw-Forward). Added 7 enums (including `ForwardingPolicy`). Defined 4 audit verification operations. |
 | **v0.2** | Initial JSON-LD schema with UserML payload, PROV integration, and cryptographic proof. Included `performative` and `replaces` fields. |
 | **v0.1** | Draft specification document. |

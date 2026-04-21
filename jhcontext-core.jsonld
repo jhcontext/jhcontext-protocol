@@ -17,10 +17,11 @@
   "semantic_payload": [
     {
       "@model": "UserML",
-      "layer":  "observation",
       "mainpart": {"subject":"user:<id>", "auxiliary":"hasProperty",
-                   "predicate":"<attribute>", "range":"<value>"},
-      "explanation": {"source":"<source-id>", "confidence": 1.0}
+                   "predicate":"<attribute>",
+                   "range":"<value-space>", "object":"<actual-value>"},
+      "explanation":    {"source":"<source-id>", "confidence": 1.0},
+      "administration": {"group":"Observation"}
     }
   ],
 
