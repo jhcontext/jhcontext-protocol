@@ -6,7 +6,7 @@ The **jhcontext protocol** (PAC-AI — Protocol for Auditable Context in AI) is 
 
 ## Status
 
-- **Version:** v0.3
+- **Version:** v0.4
 - **Stability:** Research specification (targeting AIS 2026)
 - **Reference implementation:** [jhcontext-sdk](https://github.com/jhdarosa/jhcontext-sdk) (Python, v0.2.x)
 
@@ -37,13 +37,13 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `context_id` | string | yes | `ctx-<uuid>` | Unique envelope identifier |
-| `schema_version` | string | yes | `"jh:0.3"` | Protocol version |
+| `schema_version` | string | yes | `"jh:0.4"` | Protocol version |
 | `producer` | string (DID) | yes | — | DID of the producing agent |
 | `created_at` | ISO 8601 datetime | yes | now | Creation timestamp |
 | `ttl` | ISO 8601 duration | yes | `"PT30M"` | Time-to-live |
 | `status` | EnvelopeStatus | yes | `"active"` | Lifecycle status |
 | `scope` | string | yes | — | Regulatory/business context (e.g. `healthcare_treatment_recommendation`) |
-| `semantic_payload` | array of objects | yes | `[]` | Semantic context layers (see UserML below) |
+| `semantic_payload` | array of objects | yes | `[]` | Flat list of atomic UserML semantic statements (see below) |
 | `artifacts_registry` | array of Artifact | yes | `[]` | Tracked computational artifacts |
 | `passed_artifact_pointer` | string \| null | no | `null` | Points to the artifact selected for decision |
 | `decision_influence` | array of DecisionInfluence | yes | `[]` | How context influenced decisions |
@@ -77,7 +77,7 @@ All fields match the canonical schema in `jhcontext-core.jsonld`.
 |-------|------|----------|---------|-------------|
 | `agent` | string (DID) | yes | — | Agent that made the decision |
 | `categories` | array of string | yes | — | Data dimensions used (e.g. `patient_status`, `tumor_response`) |
-| `abstraction_level` | AbstractionLevel | yes | `"situation"` | UserML layer of the influence |
+| `abstraction_level` | AbstractionLevel | yes | `"situation"` | UserML layer-tag of the influencing statement |
 | `temporal_scope` | TemporalScope | yes | `"current"` | Whether current or historical data was used |
 | `influence_weights` | object (string → float) | yes | `{}` | Per-category weight [0–1] |
 | `confidence` | float | yes | `0.0` | Overall decision confidence |
@@ -145,34 +145,55 @@ The jhcontext SDK provides `ForwardingEnforcer` — a framework-agnostic class t
 
 ## Semantic Payload (UserML)
 
-The `semantic_payload` carries context as an array of UserML objects with four abstraction layers:
+The `semantic_payload` carries a flat list of **semantic statements**. Each statement is an atomic UserML SituationalStatement [Heckmann 2005] — a markup-language unit expressed in RDF whose tuples refer to external ontologies (SNOMED, FHIR, QTI, custom RDF). The RDF derivation enables SPARQL indexing and downstream reasoning without constraining the ontologies used.
+
+Each statement carries:
+
+- **`@model`** discriminator (currently `"UserML"`)
+- **`layer`** type-tag — one of `observation` | `interpretation` | `situation` | `application`
+- **`mainpart`** — the core claim. Heckmann's trio is `auxiliary / predicate / range`; PAC-AI adds an explicit `subject` slot to handle multi-subject context (submissions, findings, agents — not just users). Mainpart is therefore `{subject, auxiliary, predicate, range}`.
+- **`situation`** *(optional box)* — temporal/spatial context of the claim itself: `start`, `end`, `durability`, `location`.
+- **`explanation`** *(optional box)* — epistemic metadata: `confidence`, `creator` (DID), `source`, `method`, `evidence`.
+
+Heckmann's `privacy` and `administration` boxes are mapped to envelope-level fields (governance block and proof block, respectively); they are not repeated per statement.
 
 ```json
-{
-  "@model": "UserML",
-  "layers": {
-    "observation": [
-      { "subject": "user:alice", "predicate": "temperature", "object": 22.3 }
-    ],
-    "interpretation": [
-      { "subject": "user:alice", "predicate": "comfort", "object": "high", "confidence": 0.92 }
-    ],
-    "situation": [
-      { "subject": "user:alice", "predicate": "isInSituation", "object": "meeting", "confidence": 0.95 }
-    ],
-    "application": [
-      { "subject": "notification", "predicate": "shouldBeDelivered", "object": false }
-    ]
-  }
-}
+"semantic_payload": [
+  { "@model": "UserML",
+    "layer":  "observation",
+    "mainpart": {"subject": "user:alice", "auxiliary": "hasProperty",
+                 "predicate": "temperature", "range": 22.3},
+    "explanation": {"source": "sensor:thermostat-01", "confidence": 1.0} },
+
+  { "@model": "UserML",
+    "layer":  "interpretation",
+    "mainpart": {"subject": "user:alice", "auxiliary": "hasAssessment",
+                 "predicate": "thermalComfort", "range": "comfortable"},
+    "explanation": {"confidence": 0.92, "creator": "did:example:comfort-agent",
+                    "method": "thermal_model_v1"} },
+
+  { "@model": "UserML",
+    "layer":  "situation",
+    "mainpart": {"subject": "user:alice", "auxiliary": "isInSituation",
+                 "predicate": "activity", "range": "meeting"},
+    "situation":   {"start": "2026-02-01T10:00:00Z"},
+    "explanation": {"confidence": 0.95} },
+
+  { "@model": "UserML",
+    "layer":  "application",
+    "mainpart": {"subject": "notification:n-42", "auxiliary": "hasPolicy",
+                 "predicate": "shouldBeDelivered", "range": false} }
+]
 ```
 
-| Layer | Purpose | Key fields |
-|-------|---------|------------|
-| **observation** | Raw sensor/data facts | subject, predicate, object |
-| **interpretation** | Inferred insights | + `confidence` |
-| **situation** | High-level contextual states | + `confidence`, `start` (ISO 8601) |
-| **application** | Domain-specific actions | application-defined |
+| Layer | Purpose |
+|-------|---------|
+| **observation** | Raw sensor/data facts |
+| **interpretation** | Inferred insights (expect `explanation.confidence`) |
+| **situation** | Higher-level contextual states; often paired with a `situation` box for temporal/spatial scope |
+| **application** | Domain-specific actions or decisions |
+
+**Note on the shape.** In Heckmann's original UserML the layer is a type-tag on each statement, not a container. v0.4 follows that shape: statements are atomic and independently queryable. The outer `layers: {...}` wrapper used in earlier drafts has been removed.
 
 ---
 
@@ -242,6 +263,7 @@ Multiple results combine into an **AuditReport** with `context_id`, `timestamp`,
 
 | Version | Changes |
 |---------|---------|
+| **v0.4** | Realigned `semantic_payload` to Heckmann's SituationalStatement shape. Flat list of atomic statements, each carrying a `layer` type-tag, a `mainpart {subject, auxiliary, predicate, range}` (explicit `subject` is a PAC-AI extension over UserML's implicit-user-subject), and optional `situation` (temporal/spatial) and `explanation` (epistemic metadata: confidence, creator, source, method, evidence) boxes. Removed the outer `layers: {...}` wrapper; the layer is now a per-statement type-tag. Heckmann's `privacy` and `administration` boxes continue to be factored to the envelope's governance and proof blocks. |
 | **v0.3** | Added: `scope`, `artifacts_registry`, `passed_artifact_pointer`, `decision_influence`, `privacy` block, `compliance` block with `forwarding_policy` (Semantic-Forward / Raw-Forward). Added 7 enums (including `ForwardingPolicy`). Defined 4 audit verification operations. |
 | **v0.2** | Initial JSON-LD schema with UserML payload, PROV integration, and cryptographic proof. Included `performative` and `replaces` fields. |
 | **v0.1** | Draft specification document. |

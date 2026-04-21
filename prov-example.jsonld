@@ -6,31 +6,32 @@
   },
   "@type": "jh:Envelope",
   "context_id": "ctx-9012",
-  "schema_version": "jh:0.3",
+  "schema_version": "jh:0.4",
   "producer": "did:web:company.example:agent-1",
   "created_at": "2026-02-02T10:15:00Z",
   "ttl": "PT30M",
   "status": "active",
   "scope": "notification_management",
 
-  "semantic_payload": [{
-    "@model": "UserML",
-    "layers": {
-      "observation": [
-        { "subject": "user:alice", "predicate": "calendarStatus", "object": "InMeeting" },
-        { "subject": "user:alice", "predicate": "microphoneActivity", "object": "speechDetected" }
-      ],
-      "interpretation": [
-        { "subject": "user:alice", "predicate": "availability", "object": "low", "confidence": 0.88 }
-      ],
-      "situation": [
-        { "subject": "user:alice", "predicate": "isInSituation", "object": "meeting", "confidence": 0.9 }
-      ],
-      "application": [
-        { "subject": "notification", "predicate": "shouldBeDelivered", "object": false }
-      ]
-    }
-  }],
+  "semantic_payload": [
+    { "@model": "UserML", "layer": "observation",
+      "mainpart": {"subject":"user:alice","auxiliary":"hasProperty",
+                   "predicate":"calendarStatus","range":"InMeeting"} },
+    { "@model": "UserML", "layer": "observation",
+      "mainpart": {"subject":"user:alice","auxiliary":"hasProperty",
+                   "predicate":"microphoneActivity","range":"speechDetected"} },
+    { "@model": "UserML", "layer": "interpretation",
+      "mainpart": {"subject":"user:alice","auxiliary":"hasAssessment",
+                   "predicate":"availability","range":"low"},
+      "explanation": {"confidence": 0.88} },
+    { "@model": "UserML", "layer": "situation",
+      "mainpart": {"subject":"user:alice","auxiliary":"isInSituation",
+                   "predicate":"activity","range":"meeting"},
+      "explanation": {"confidence": 0.9} },
+    { "@model": "UserML", "layer": "application",
+      "mainpart": {"subject":"notification","auxiliary":"hasPolicy",
+                   "predicate":"shouldBeDelivered","range": false} }
+  ],
 
   "artifacts_registry": [
     {
